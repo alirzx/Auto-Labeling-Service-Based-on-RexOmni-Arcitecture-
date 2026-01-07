@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers.rexomni_endpoints import router as rexomni_router
 from app.routers.florence_endpoints import router as florence_router
@@ -16,6 +17,17 @@ app = FastAPI(
         "Model selection is handled at the application layer."
     ),
     version="2.0",
+)
+
+# -----------------------------
+# CORS
+# -----------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # -----------------------------
