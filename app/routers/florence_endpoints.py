@@ -148,15 +148,32 @@ async def object_detection(
     return await _process_files(service, files, "Object Detection", visualize=visualize)
 
 
+# @router.post("/open_vocab_detection")
+# async def open_vocab_detection(
+#     file: Union[UploadFile, List[UploadFile]] = File(...),
+#     text_input: str = Form(...),
+#     visualize: bool = Form(True),
+#     service: Florence2InferenceService = Depends(get_florence_service),
+# ):
+#     files = file if isinstance(file, list) else [file]
+#     return await _process_files(service, files, "Open Vocabulary Detection", text_input, visualize)
+
+
 @router.post("/open_vocab_detection")
 async def open_vocab_detection(
     file: Union[UploadFile, List[UploadFile]] = File(...),
-    text_input: str = Form(...),
+    categories: str = Form(...),  # <-- IMPORTANT
     visualize: bool = Form(True),
     service: Florence2InferenceService = Depends(get_florence_service),
 ):
     files = file if isinstance(file, list) else [file]
-    return await _process_files(service, files, "Open Vocabulary Detection", text_input, visualize)
+    return await _process_files(
+        service,
+        files,
+        "Open Vocabulary Detection",
+        text_input=categories,  # pass as text_input internally
+        visualize=visualize
+    )
 
 
 # -----------------------------

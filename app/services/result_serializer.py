@@ -23,7 +23,9 @@ def normalize_result(result: dict, task: str, model: str, image_bytes: bytes | N
     if not result:
         return normalized
 
-    task_lower = task.lower()
+    #task_lower = task.lower()
+    task_lower = task.lower().replace(" ", "_")
+
 
     # Detection tasks
     if task_lower in {"detection", "object_detection", "open_vocab_detection", "open_vocabulary_detection"}:
