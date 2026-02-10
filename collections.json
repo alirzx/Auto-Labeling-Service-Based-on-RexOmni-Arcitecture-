@@ -1,0 +1,1158 @@
+{
+  "project": {
+    "name": "Vision+Language Auto Annotation Platform",
+    "version": "2.1.0",
+    "description": "Production-grade auto-labeling service with Florence-2 foundation model",
+    "api_version": "v1",
+    "base_url": "http://localhost:6996",
+    "status": "active",
+    "last_updated": "2026-01-29"
+  },
+
+  "system_architecture": {
+    "job_processing": {
+      "type": "asynchronous_with_sync_fallback",
+      "storage": "local_file_system",
+      "artifact_location": "./job_artifacts",
+      "supported_formats": ["png", "jpeg"],
+      "max_concurrent_jobs": 10
+    },
+    "supported_inputs": {
+      "image_formats": ["jpg", "jpeg", "png", "bmp", "webp"],
+      "max_file_size": "10MB",
+      "batch_processing": true,
+      "multipart_form": true
+    },
+    "current_models": {
+      "active": ["florence"],
+      "inactive": ["rexomni"],
+      "note": "RexOmni adapter is currently commented out in model registry"
+    }
+  },
+
+  "backbone_models": [
+    {
+      "id": "florence",
+      "name": "Florence-2",
+      "type": "vision_foundation_model",
+      "provider": "Microsoft",
+      "status": "active",
+      "description": "Florence-2: Unified vision foundation model with multi-task capabilities via prompt-based interface",
+      "capabilities": [
+        "captioning",
+        "visual_grounding",
+        "object_detection",
+        "open_vocab_detection",
+        "segmentation",
+        "region_reasoning",
+        "ocr",
+        "dense_captioning"
+      ],
+      "default_tasks": "all"
+    }
+  ],
+
+  "api_endpoints": {
+    "florence": {
+      "base_path": "/vision/florence",
+      "prefix": "/vision/florence",
+      "endpoints": [
+        {
+          "id": "florence_caption",
+          "name": "caption",
+          "path": "/caption",
+          "method": "POST",
+          "description": "Generate basic image caption",
+          "task_type": "caption",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]",
+                "format": "multipart/form-data",
+                "description": "Single image file or array of image files for batch processing"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true,
+                "description": "Return visualized image with annotations. If false, returns JSON only"
+              }
+            ],
+            "note": "text_input is NOT required for basic captioning (registry correction)"
+          },
+          "output": {
+            "content_type": ["image/png", "application/json"],
+            "structure": {
+              "when_visualize_true": {
+                "type": "StreamingResponse",
+                "headers": {
+                  "X-Florence-Results": "Base64 encoded JSON string containing results"
+                },
+                "body": "PNG image bytes with caption overlay"
+              },
+              "when_visualize_false": {
+                "type": "application/json",
+                "structure_example": {
+                  "results": ["A beautiful sunset over the mountains", "A scenic mountain landscape at dusk"]
+                }
+              }
+            },
+            "normalized_format": {
+              "ok": true,
+              "task": "caption",
+              "model": "florence",
+              "results": "array of caption strings",
+              "artifacts": ["overlay"]
+            }
+          },
+          "batch_support": true,
+          "max_batch_size": 10
+        },
+        {
+          "id": "florence_caption_detailed",
+          "name": "caption_detailed",
+          "path": "/caption_detailed",
+          "method": "POST",
+          "description": "Generate detailed image caption",
+          "task_type": "caption_detailed",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]",
+                "format": "multipart/form-data"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "note": "text_input is NOT required (registry correction)"
+          },
+          "output": "Same as /caption endpoint",
+          "batch_support": true
+        },
+        {
+          "id": "florence_caption_more_detailed",
+          "name": "caption_more_detailed",
+          "path": "/caption_more_detailed",
+          "method": "POST",
+          "description": "Generate more detailed image caption",
+          "task_type": "caption_more_detailed",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "note": "text_input is NOT required (registry correction)"
+          },
+          "output": "Same as /caption endpoint",
+          "batch_support": true
+        },
+        {
+          "id": "florence_caption_grounding",
+          "name": "caption_grounding",
+          "path": "/caption_grounding",
+          "method": "POST",
+          "description": "Generate caption with visual grounding of mentioned objects",
+          "task_type": "caption_grounding",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              },
+              {
+                "name": "text_input",
+                "type": "string",
+                "description": "Caption text that will be grounded in the image"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": {
+            "content_type": ["image/png", "application/json"],
+            "structure": {
+              "when_visualize_true": {
+                "type": "StreamingResponse",
+                "headers": {
+                  "X-Florence-Results": "JSON string with bounding boxes and captions"
+                },
+                "body": "PNG image with grounding boxes"
+              },
+              "when_visualize_false": {
+                "type": "application/json",
+                "structure_example": {
+                  "results": [
+                    {
+                      "caption": "A dog running in the park",
+                      "bboxes": [[100, 150, 250, 300], [50, 200, 150, 350]],
+                      "labels": ["dog", "person"]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "batch_support": true
+        },
+        {
+          "id": "florence_caption_grounding_detailed",
+          "name": "caption_grounding_detailed",
+          "path": "/caption_grounding_detailed",
+          "method": "POST",
+          "task_type": "caption_grounding_detailed",
+          "description": "Detailed caption with visual grounding",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              },
+              {
+                "name": "text_input",
+                "type": "string"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": "Same as /caption_grounding",
+          "batch_support": true
+        },
+        {
+          "id": "florence_caption_grounding_more_detailed",
+          "name": "caption_grounding_more_detailed",
+          "path": "/caption_grounding_more_detailed",
+          "method": "POST",
+          "task_type": "caption_grounding_more_detailed",
+          "description": "More detailed caption with visual grounding",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              },
+              {
+                "name": "text_input",
+                "type": "string"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": "Same as /caption_grounding",
+          "batch_support": true
+        },
+        {
+          "id": "florence_caption_to_phrase_grounding",
+          "name": "caption_to_phrase_grounding",
+          "path": "/caption_to_phrase_grounding",
+          "method": "POST",
+          "task_type": "caption_to_phrase_grounding",
+          "description": "Generate caption and ground specific phrases in the image",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              },
+              {
+                "name": "text_input",
+                "type": "string",
+                "description": "Text containing phrases to ground in the image"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": "Same as /caption_grounding",
+          "batch_support": true
+        },
+        {
+          "id": "florence_object_detection",
+          "name": "object_detection",
+          "path": "/object_detection",
+          "method": "POST",
+          "task_type": "detection",
+          "description": "Standard object detection with predefined categories",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": {
+            "content_type": ["image/png", "application/json"],
+            "structure": {
+              "when_visualize_true": {
+                "type": "StreamingResponse",
+                "headers": {
+                  "X-Florence-Results": "JSON string of detections"
+                },
+                "body": "PNG image with detection boxes"
+              },
+              "when_visualize_false": {
+                "type": "application/json",
+                "normalized_structure_example": {
+                  "ok": true,
+                  "task": "detection",
+                  "model": "florence",
+                  "results": {
+                    "bboxes": [[100, 150, 250, 300], [50, 200, 150, 350]],
+                    "labels": ["person", "dog"],
+                    "scores": [0.95, 0.87]
+                  }
+                }
+              }
+            }
+          },
+          "batch_support": true
+        },
+        {
+          "id": "florence_open_vocab_detection",
+          "name": "open_vocab_detection",
+          "path": "/open_vocab_detection",
+          "method": "POST",
+          "task_type": "open_vocab_detection",
+          "description": "Open vocabulary object detection with user-specified categories",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              },
+              {
+                "name": "categories",
+                "type": "string",
+                "description": "Comma-separated list of categories to detect (e.g., 'car,person,dog')"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": {
+            "content_type": ["image/png", "application/json"],
+            "structure": {
+              "when_visualize_true": {
+                "type": "StreamingResponse",
+                "headers": {
+                  "X-Florence-Results": "JSON string of detections"
+                },
+                "body": "PNG image with detection boxes"
+              },
+              "when_visualize_false": {
+                "type": "application/json",
+                "normalized_structure_example": {
+                  "ok": true,
+                  "task": "open_vocab_detection",
+                  "model": "florence",
+                  "results": {
+                    "bboxes": [[100, 150, 250, 300], [50, 200, 150, 350]],
+                    "labels": ["car", "traffic light"],
+                    "scores": [0.92, 0.78]
+                  }
+                }
+              }
+            }
+          },
+          "batch_support": true
+        },
+        {
+          "id": "florence_referring_expression_segmentation",
+          "name": "referring_expression_segmentation",
+          "path": "/referring_expression_segmentation",
+          "method": "POST",
+          "task_type": "referring_expression_segmentation",
+          "description": "Segmentation based on natural language referring expressions",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              },
+              {
+                "name": "text_input",
+                "type": "string",
+                "description": "Referring expression (e.g., 'the red car on the left')"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": {
+            "content_type": ["image/png", "application/json"],
+            "structure": {
+              "when_visualize_true": {
+                "type": "StreamingResponse",
+                "headers": {
+                  "X-Florence-Results": "JSON string of segmentation results"
+                },
+                "body": "PNG image with segmentation mask overlay"
+              },
+              "when_visualize_false": {
+                "type": "application/json",
+                "normalized_structure_example": {
+                  "ok": true,
+                  "task": "referring_expression_segmentation",
+                  "model": "florence",
+                  "results": {
+                    "polygons": [[[100, 150], [120, 150], [120, 170], [100, 170]]],
+                    "labels": ["red car"],
+                    "bboxes": [[100, 150, 120, 170]],
+                    "masks": "base64_encoded_mask_data_here"
+                  },
+                  "artifacts": ["mask", "overlay"]
+                }
+              }
+            }
+          },
+          "batch_support": true
+        },
+        {
+          "id": "florence_region_segmentation",
+          "name": "region_segmentation",
+          "path": "/region_segmentation",
+          "method": "POST",
+          "task_type": "region_segmentation",
+          "description": "Convert region descriptions to segmentation masks",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              },
+              {
+                "name": "text_input",
+                "type": "string",
+                "description": "Region description text"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "note": "Registry incorrectly shows no text_input required - corrected based on endpoint"
+          },
+          "output": "Same as /referring_expression_segmentation",
+          "batch_support": true
+        },
+        {
+          "id": "florence_region_category",
+          "name": "region_category",
+          "path": "/region_category",
+          "method": "POST",
+          "task_type": "region_category",
+          "description": "Classify specified regions into categories",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              },
+              {
+                "name": "text_input",
+                "type": "string",
+                "description": "Region specification"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": {
+            "content_type": ["image/png", "application/json"],
+            "structure": {
+              "when_visualize_true": {
+                "type": "StreamingResponse",
+                "headers": {
+                  "X-Florence-Results": "JSON string of category results"
+                },
+                "body": "PNG image with region annotations"
+              },
+              "when_visualize_false": {
+                "type": "application/json",
+                "normalized_structure_example": {
+                  "ok": true,
+                  "task": "region_category",
+                  "model": "florence",
+                  "results": "raw Florence results",
+                  "artifacts": []
+                }
+              }
+            }
+          },
+          "batch_support": true
+        },
+        {
+          "id": "florence_region_description",
+          "name": "region_description",
+          "path": "/region_description",
+          "method": "POST",
+          "task_type": "region_description",
+          "description": "Generate descriptions for specified regions",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              },
+              {
+                "name": "text_input",
+                "type": "string",
+                "description": "Region specification"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": {
+            "content_type": ["image/png", "application/json"],
+            "structure": {
+              "when_visualize_true": {
+                "type": "StreamingResponse",
+                "headers": {
+                  "X-Florence-Results": "JSON string of descriptions"
+                },
+                "body": "PNG image with region annotations"
+              },
+              "when_visualize_false": {
+                "type": "application/json",
+                "normalized_structure_example": {
+                  "ok": true,
+                  "task": "region_description",
+                  "model": "florence",
+                  "results": ["A blue car", "A traffic light"]
+                }
+              }
+            }
+          },
+          "batch_support": true
+        },
+        {
+          "id": "florence_region_proposal",
+          "name": "region_proposal",
+          "path": "/region_proposal",
+          "method": "POST",
+          "task_type": "region_proposal",
+          "description": "Generate region proposals (candidate bounding boxes)",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": {
+            "content_type": ["image/png", "application/json"],
+            "structure": {
+              "when_visualize_true": {
+                "type": "StreamingResponse",
+                "headers": {
+                  "X-Florence-Results": "JSON string of region proposals"
+                },
+                "body": "PNG image with proposal boxes"
+              },
+              "when_visualize_false": {
+                "type": "application/json",
+                "normalized_structure_example": {
+                  "ok": true,
+                  "task": "region_proposal",
+                  "model": "florence",
+                  "results": "raw Florence results",
+                  "artifacts": []
+                }
+              }
+            }
+          },
+          "batch_support": true
+        },
+        {
+          "id": "florence_dense_region_caption",
+          "name": "dense_region_caption",
+          "path": "/dense_region_caption",
+          "method": "POST",
+          "task_type": "dense_region_caption",
+          "description": "Generate dense captions for all regions in the image",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": {
+            "content_type": ["image/png", "application/json"],
+            "structure": {
+              "when_visualize_true": {
+                "type": "StreamingResponse",
+                "headers": {
+                  "X-Florence-Results": "JSON string of dense captions"
+                },
+                "body": "PNG image with dense caption annotations"
+              },
+              "when_visualize_false": {
+                "type": "application/json",
+                "normalized_structure_example": {
+                  "ok": true,
+                  "task": "dense_region_caption",
+                  "model": "florence",
+                  "results": [
+                    {"bbox": [100, 150, 250, 300], "caption": "A person walking"},
+                    {"bbox": [50, 200, 150, 350], "caption": "A dog running"}
+                  ]
+                }
+              }
+            }
+          },
+          "batch_support": true
+        },
+        {
+          "id": "florence_ocr",
+          "name": "ocr",
+          "path": "/ocr",
+          "method": "POST",
+          "task_type": "ocr",
+          "description": "Optical Character Recognition - extract text from image",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": {
+            "content_type": ["image/png", "application/json"],
+            "structure": {
+              "when_visualize_true": {
+                "type": "StreamingResponse",
+                "headers": {
+                  "X-Florence-Results": "JSON string of OCR results"
+                },
+                "body": "PNG image with OCR text overlay"
+              },
+              "when_visualize_false": {
+                "type": "application/json",
+                "normalized_structure_example": {
+                  "ok": true,
+                  "task": "ocr",
+                  "model": "florence",
+                  "results": [
+                    {"text": "Hello", "bbox": [100, 150, 180, 170]},
+                    {"text": "World", "bbox": [200, 150, 280, 170]}
+                  ]
+                }
+              }
+            }
+          },
+          "batch_support": true
+        },
+        {
+          "id": "florence_ocr_with_region",
+          "name": "ocr_with_region",
+          "path": "/ocr_with_region",
+          "method": "POST",
+          "task_type": "ocr_with_region",
+          "description": "OCR with region-specific text extraction",
+          "sync_processing": true,
+          "input": {
+            "required": [
+              {
+                "name": "file",
+                "type": "UploadFile | List[UploadFile]"
+              }
+            ],
+            "optional": [
+              {
+                "name": "visualize",
+                "type": "boolean",
+                "default": true
+              }
+            ]
+          },
+          "output": "Same as /ocr endpoint",
+          "batch_support": true
+        }
+      ]
+    },
+
+    "job_management": {
+      "base_path": "/api/jobs",
+      "prefix": "/api/jobs",
+      "async_processing_only": true,
+      "endpoints": [
+        {
+          "id": "get_available_tasks",
+          "name": "get_available_tasks",
+          "path": "/tasks",
+          "method": "GET",
+          "description": "Get all available tasks for a specific model with their required inputs",
+          "input": {
+            "query_parameters": [
+              {
+                "name": "model",
+                "type": "string",
+                "required": true,
+                "description": "Model name: 'florence' (rexomni currently unavailable)",
+                "allowed_values": ["florence"]
+              }
+            ]
+          },
+          "output": {
+            "content_type": "application/json",
+            "structure_example": {
+              "tasks": [
+                "caption",
+                "caption_detailed",
+                "caption_more_detailed",
+                "caption_grounding",
+                "caption_grounding_detailed",
+                "caption_grounding_more_detailed",
+                "caption_to_phrase_grounding",
+                "detection",
+                "open_vocab_detection",
+                "referring_expression_segmentation",
+                "region_segmentation",
+                "region_category",
+                "region_description",
+                "region_proposal",
+                "dense_region_caption",
+                "ocr",
+                "ocr_with_region"
+              ],
+              "required_inputs": {
+                "caption": [],
+                "caption_detailed": [],
+                "caption_more_detailed": [],
+                "caption_grounding": ["text_input"],
+                "caption_grounding_detailed": ["text_input"],
+                "caption_grounding_more_detailed": ["text_input"],
+                "caption_to_phrase_grounding": ["text_input"],
+                "detection": [],
+                "open_vocab_detection": ["categories"],
+                "referring_expression_segmentation": ["text_input"],
+                "region_segmentation": ["text_input"],
+                "region_category": ["text_input"],
+                "region_description": ["text_input"],
+                "region_proposal": [],
+                "dense_region_caption": [],
+                "ocr": [],
+                "ocr_with_region": []
+              }
+            }
+          }
+        },
+        {
+          "id": "create_job",
+          "name": "create_job",
+          "path": "",
+          "method": "POST",
+          "description": "Submit a new annotation job for async processing",
+          "input": {
+            "multipart_form": [
+              {
+                "name": "file",
+                "type": "UploadFile",
+                "required": true,
+                "description": "Single image file (batch not supported in jobs)"
+              },
+              {
+                "name": "task",
+                "type": "string",
+                "required": true,
+                "description": "Task type from available tasks list"
+              },
+              {
+                "name": "model",
+                "type": "string",
+                "required": true,
+                "description": "Model to use: 'florence'",
+                "allowed_values": ["florence"]
+              },
+              {
+                "name": "text_input",
+                "type": "string",
+                "required": false,
+                "description": "Text input for tasks that require it (check required_inputs)"
+              }
+            ]
+          },
+          "output": {
+            "content_type": "application/json",
+            "structure_example": {
+              "job_id": "123e4567-e89b-12d3-a456-426614174000"
+            }
+          }
+        },
+        {
+          "id": "read_job",
+          "name": "read_job",
+          "path": "/{job_id}",
+          "method": "GET",
+          "description": "Get job status, progress, and metadata",
+          "input": {
+            "path_parameters": [
+              {
+                "name": "job_id",
+                "type": "string",
+                "required": true,
+                "description": "Job ID returned from create_job endpoint"
+              }
+            ]
+          },
+          "output": {
+            "content_type": "application/json",
+            "structure_example": {
+              "id": "123e4567-e89b-12d3-a456-426614174000",
+              "status": "completed",
+              "progress": 100,
+              "error": null,
+              "has_result": true,
+              "artifacts": ["overlay", "mask"]
+            }
+          }
+        },
+        {
+          "id": "get_job_result",
+          "name": "get_job_result",
+          "path": "/{job_id}/result",
+          "method": "GET",
+          "description": "Get job results if job is completed",
+          "input": {
+            "path_parameters": [
+              {
+                "name": "job_id",
+                "type": "string",
+                "required": true
+              }
+            ]
+          },
+          "output": {
+            "content_type": "application/json",
+            "structure_example": {
+              "job_id": "123e4567-e89b-12d3-a456-426614174000",
+              "task": "detection",
+              "model": "florence",
+              "annotations": {
+                "ok": true,
+                "task": "detection",
+                "model": "florence",
+                "image_bytes": "base64_encoded_image_data",
+                "mask_bytes": null,
+                "results": {
+                  "bboxes": [[100, 150, 250, 300], [50, 200, 150, 350]],
+                  "labels": ["person", "dog"],
+                  "scores": [0.95, 0.87]
+                },
+                "artifacts": ["overlay"]
+              },
+              "artifacts": {
+                "overlay": "/api/jobs/123e4567-e89b-12d3-a456-426614174000/artifacts/overlay",
+                "mask": "/api/jobs/123e4567-e89b-12d3-a456-426614174000/artifacts/mask"
+              }
+            }
+          }
+        },
+        {
+          "id": "get_artifact",
+          "name": "get_artifact",
+          "path": "/{job_id}/artifacts/{name}",
+          "method": "GET",
+          "description": "Download a job artifact image (overlay or mask)",
+          "input": {
+            "path_parameters": [
+              {
+                "name": "job_id",
+                "type": "string",
+                "required": true
+              },
+              {
+                "name": "name",
+                "type": "string",
+                "required": true,
+                "description": "Artifact name: 'overlay' (annotated image) or 'mask' (segmentation mask)",
+                "allowed_values": ["overlay", "mask"]
+              }
+            ]
+          },
+          "output": {
+            "content_type": "image/png",
+            "description": "PNG image bytes"
+          }
+        }
+      ]
+    }
+  },
+
+  "task_reference": {
+    "by_category": {
+      "captioning": [
+        "caption",
+        "caption_detailed",
+        "caption_more_detailed"
+      ],
+      "captioning_with_grounding": [
+        "caption_grounding",
+        "caption_grounding_detailed",
+        "caption_grounding_more_detailed",
+        "caption_to_phrase_grounding"
+      ],
+      "detection": [
+        "detection",
+        "open_vocab_detection"
+      ],
+      "segmentation": [
+        "referring_expression_segmentation",
+        "region_segmentation"
+      ],
+      "region_reasoning": [
+        "region_category",
+        "region_description",
+        "region_proposal",
+        "dense_region_caption"
+      ],
+      "ocr": [
+        "ocr",
+        "ocr_with_region"
+      ]
+    },
+    "text_input_required": [
+      "caption_grounding",
+      "caption_grounding_detailed",
+      "caption_grounding_more_detailed",
+      "caption_to_phrase_grounding",
+      "referring_expression_segmentation",
+      "region_segmentation",
+      "region_category",
+      "region_description"
+    ],
+    "categories_input_required": [
+      "open_vocab_detection"
+    ],
+    "no_additional_input": [
+      "caption",
+      "caption_detailed",
+      "caption_more_detailed",
+      "detection",
+      "region_proposal",
+      "dense_region_caption",
+      "ocr",
+      "ocr_with_region"
+    ]
+  },
+
+  "response_formats": {
+    "normalized_result_structure": {
+      "ok": "boolean (true for success)",
+      "task": "string (task name)",
+      "model": "string (model name)",
+      "image_bytes": "base64 string or null",
+      "mask_bytes": "base64 string or null",
+      "results": "object (task-specific results)",
+      "artifacts": "array of strings (available artifacts)"
+    },
+    "task_specific_examples": {
+      "detection": {
+        "bboxes": [[100, 150, 250, 300], [50, 200, 150, 350]],
+        "labels": ["person", "dog"],
+        "scores": [0.95, 0.87]
+      },
+      "segmentation": {
+        "polygons": [[[100, 150], [120, 150], [120, 170], [100, 170]]],
+        "labels": ["object"],
+        "bboxes": [[100, 150, 120, 170]],
+        "masks": "base64_encoded_mask_data"
+      },
+      "captioning": ["A beautiful sunset over the mountains"],
+      "ocr": [
+        {"text": "Hello", "bbox": [100, 150, 180, 170]},
+        {"text": "World", "bbox": [200, 150, 280, 170]}
+      ]
+    }
+  },
+
+  "job_states": {
+    "queued": "Job is waiting to be processed",
+    "running": "Job is currently being processed (progress=20)",
+    "completed": "Job finished successfully (progress=100)",
+    "failed": "Job failed due to error"
+  },
+
+  "error_handling": {
+    "common_errors": {
+      "400": {
+        "cause": "Bad Request - Invalid input parameters",
+        "examples": [
+          "Invalid task or model name",
+          "Missing required text_input for grounding tasks",
+          "Invalid image format",
+          "File too large (>10MB)"
+        ]
+      },
+      "404": {
+        "cause": "Not Found",
+        "examples": [
+          "Job ID not found",
+          "Endpoint not found",
+          "Artifact not found"
+        ]
+      },
+      "500": {
+        "cause": "Internal Server Error",
+        "examples": [
+          "Model inference failed",
+          "Memory allocation error",
+          "Internal processing error"
+        ]
+      }
+    },
+    "validation_rules": {
+      "model_selection": "Currently only 'florence' is supported",
+      "task_model_compatibility": "All tasks are supported by florence",
+      "file_validation": "Must be valid image < 10MB",
+      "text_input_validation": "Required for tasks in text_input_required list"
+    }
+  },
+
+  "integration_guidelines": {
+    "sync_vs_async": {
+      "synchronous": "Use direct /vision/florence endpoints for real-time results (<5s)",
+      "asynchronous": "Use /api/jobs endpoints for heavy processing or result persistence"
+    },
+    "visualization_control": {
+      "visualize=true": "Returns image with annotations (StreamingResponse)",
+      "visualize=false": "Returns JSON results only (application/json)"
+    },
+    "batch_processing": {
+      "supported": "Only in synchronous endpoints via array of UploadFile",
+      "not_supported": "In job endpoints (single file per job)"
+    },
+    "artifact_handling": {
+      "overlay": "Annotated image with visualizations",
+      "mask": "Segmentation mask (black/white)",
+      "download": "Use /api/jobs/{id}/artifacts/{name} endpoints"
+    }
+  },
+
+  "notes_and_limitations": {
+    "current_limitations": [
+      "RexOmni model is currently commented out in registry",
+      "Only Florence model is actively supported",
+      "Job system supports single-file processing only",
+      "All synchronous endpoints support batch processing"
+    ],
+    "planned_enhancements": [
+      "Reactivate RexOmni model support",
+      "Add batch processing to job system",
+      "Add webhook notifications for job completion",
+      "Add result caching system"
+    ]
+  }
+}
